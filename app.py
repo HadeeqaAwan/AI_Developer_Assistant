@@ -1,7 +1,5 @@
 import streamlit as st
-from langchain_core.messages import HumanMessage
-
-from multi_agent import app as agent_app
+import requests
 
 
 # ============================================================
@@ -13,6 +11,13 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+
+# ============================================================
+# API CONFIGURATION
+# ============================================================
+
+API_URL = "https://ai-developer-assistant-0kbj.onrender.com/chat"
 
 
 # ============================================================
@@ -159,7 +164,7 @@ if user_input:
 
 
     # --------------------------------------------------------
-    # Generate assistant response
+    # Send request to Render API
     # --------------------------------------------------------
 
     with st.chat_message("assistant"):
@@ -168,101 +173,37 @@ if user_input:
 
             try:
 
-                result = agent_app.invoke(
-                    {
-                        "messages": [
-                            HumanMessage(
-                                content=user_input
-                            )
-                        ]
-                    }
+                response = requests.post(
+                    API_URL,
+                    json={
+                        "message": user_input
+                    },
+                    timeout=120
                 )
 
 
                 # ------------------------------------------------
-                # Extract final response
+                # Check API response
                 # ------------------------------------------------
 
-                final_response = ""
-
-                for message in reversed(
-                    result.get("messages", [])
-                ):
-
-                    if not hasattr(message, "content"):
-                        continue
-
-                    content = message.content
-
-                    if not content:
-                        continue
-
-
-                    # --------------------------------------------
-                    # Gemini sometimes returns a list
-                    # --------------------------------------------
-
-                    if isinstance(content, list):
-
-                        text_parts = []
-
-                        for item in content:
-
-                            if isinstance(item, dict):
-
-                                if item.get("type") == "text":
-
-                                    text_parts.append(
-                                        item.get("text", "")
-                                    )
-
-                                elif "text" in item:
-
-                                    text_parts.append(
-                                        item["text"]
-                                    )
-
-                            elif isinstance(item, str):
-
-                                text_parts.append(item)
-
-
-                        final_response = "\n".join(
-                            text_parts
-                        ).strip()
-
-
-                    # --------------------------------------------
-                    # Normal string response
-                    # --------------------------------------------
-
-                    elif isinstance(content, str):
-
-                        final_response = content.strip()
-
-
-                    # --------------------------------------------
-                    # Other response types
-                    # --------------------------------------------
-
-                    else:
-
-                        final_response = str(content).strip()
-
-
-                    if final_response:
-                        break
+                response.raise_for_status()
 
 
                 # ------------------------------------------------
-                # Fallback
+                # Get JSON response
                 # ------------------------------------------------
 
-                if not final_response:
+                data = response.json()
 
-                    final_response = (
-                        "I was unable to generate a response."
-                    )
+
+                # ------------------------------------------------
+                # Extract assistant response
+                # ------------------------------------------------
+
+                final_response = data.get(
+                    "response",
+                    "I was unable to generate a response."
+                )
 
 
                 # ------------------------------------------------
@@ -285,14 +226,83 @@ if user_input:
 
 
             # ----------------------------------------------------
-            # Error handling
+            # API error
+            # ----------------------------------------------------
+
+            except requests.exceptions.Timeout:
+
+                error_message = (
+                    "The request took too long to complete. "
+                    "Please try again."
+                )
+
+                st.error(error_message)
+
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": error_message
+                    }
+                )
+
+
+            # ----------------------------------------------------
+            # Connection error
+            # ----------------------------------------------------
+
+            except requests.exceptions.ConnectionError:
+
+                error_message = (
+                    "Could not connect to the AI Developer "
+                    "Assistant API."
+                )
+
+                st.error(error_message)
+
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": error_message
+                    }
+                )
+
+
+            # ----------------------------------------------------
+            # API returned an error
+            # ----------------------------------------------------
+
+            except requests.exceptions.HTTPError:
+
+                try:
+                    error_detail = response.json().get(
+                        "detail",
+                        "Unknown API error."
+                    )
+                except Exception:
+                    error_detail = response.text
+
+                error_message = (
+                    f"API Error: {error_detail}"
+                )
+
+                st.error(error_message)
+
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": error_message
+                    }
+                )
+
+
+            # ----------------------------------------------------
+            # Other errors
             # ----------------------------------------------------
 
             except Exception as e:
 
                 error_message = (
-                    "An error occurred while processing "
-                    "your request.\n\n"
+                    "An unexpected error occurred.\n\n"
                     f"`{str(e)}`"
                 )
 
