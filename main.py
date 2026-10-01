@@ -11,7 +11,8 @@ from tools.error_analyzer import error_analyzer
 
 from tools.calculator import calculator
 from tools.code_analyzer import code_analyzer
-
+from fastapi import FastAPI, HTTPException, Depends
+from auth.dependencies import get_current_user
 
 # Load environment variables
 load_dotenv()
